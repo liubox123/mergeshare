@@ -1,0 +1,249 @@
+from setuptools import setup, find_packages
+from setuptools.command.build_ext import build_ext
+from setuptools.command.build import build as build_orig
+from setuptools.command.bdist_wheel import bdist_wheel
+import subprocess
+import os
+import shutil
+import sysconfig
+import platform
+import glob
+
+def get_system_build_dir():
+    """
+    根据系统类型返回合适的编译目录
+    支持通过环境变量 CUSTOM_BUILD_DIR 自定义编译目录
+    """
+    # 检查是否设置了自定义编译目录
+    custom_dir = os.getenv("CUSTOM_BUILD_DIR")
+    if custom_dir:
+        print(f"使用自定义编译目录: {custom_dir}")
+        return custom_dir
+    
+    # 根据系统类型选择默认目录
+    system = platform.system().lower()
+    if system == "windows":
+        return "build_windows"
+    elif system == "darwin":  # macOS
+        return "build_macos"
+    elif system == "linux":
+        return "build_linux"
+    else:
+        # 其他系统使用通用目录
+        return f"build_{system}"
+
+def get_system_specific_paths():
+    """
+    根据系统类型返回可能的库文件路径
+    优先检查编译目录中的文件，因为这些是最新的
+    """
+    build_dir = get_system_build_dir()
+    ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or ".pyd"
+    library_name = f"shared_ring_queue{ext_suffix}"
+    
+    # 优先检查编译目录中的文件（这些是最新的）
+    base_paths = [
+        os.path.join(build_dir, "python", "processor_decorator", library_name),
+        os.path.join(build_dir, "lib", "python", "processor_decorator", library_name),
+    ]
+    
+    # Windows 特殊处理
+    if platform.system() == "Windows":
+        for build_type in ["Release", "Debug"]:
+            base_paths.extend([
+                os.path.join(build_dir, build_type, library_name),
+                os.path.join(build_dir, "python", "processor_decorator", build_type, library_name),
+            ])
+    
+    # 最后检查目标目录（可能是旧的）
+    base_paths.append(os.path.join("python", "processor_decorator", library_name))
+    
+    return base_paths
+
+def check_existing_library():
+    """
+    检查是否已经存在编译好的库文件
+    返回: (exists, library_path)
+    """
+    print("? 开始检查已存在的库文件...")
+    # 获取系统特定的路径
+    possible_paths = get_system_specific_paths()
+    print(f"? 搜索路径: {possible_paths}")
+    
+    # 查找已存在的库文件
+    for path in possible_paths:
+        if os.path.exists(path):
+            print(f"? 找到已编译的库文件: {path}")
+            return True, path
+    
+    # 使用glob模式搜索（作为备用方案）
+    ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or ".pyd"
+    search_patterns = [
+        f"**/shared_ring_queue{ext_suffix}",
+        f"**/shared_ring_queue*.so",
+        f"**/shared_ring_queue*.pyd",
+    ]
+    
+    for pattern in search_patterns:
+        matches = glob.glob(pattern, recursive=True)
+        if matches:
+            print(f"通过模式搜索找到已编译的库文件: {matches[0]}")
+            return True, matches[0]
+    
+    print("未找到已编译的库文件，需要重新编译")
+    return False, None
+
+def is_library_up_to_date(library_path, source_files):
+    """
+    检查库文件是否是最新的（通过比较修改时间）
+    """
+    if not os.path.exists(library_path):
+        return False
+    
+    library_mtime = os.path.getmtime(library_path)
+    
+    # 检查源文件
+    source_files_to_check = [
+        "shared_ring_queue.cpp",
+        "shared_ring_queue.hpp", 
+        "main.cpp",
+        "CMakeLists.txt",
+        "setup.py"
+    ]
+    
+    for source_file in source_files_to_check:
+        if os.path.exists(source_file):
+            if os.path.getmtime(source_file) > library_mtime:
+                print(f"源文件 {source_file} 比库文件更新，需要重新编译")
+                return False
+    
+    print("库文件是最新的，无需重新编译")
+    return True
+
+class CMakeBuild(build_ext):
+    def run(self):
+        print("=" * 50)
+        print("CMakeBuild.run() 被调用")
+        print(f"当前工作目录: {os.getcwd()}")
+        print(f"系统类型: {platform.system()}")
+        print("=" * 50)
+        
+        # 检查是否强制重新编译
+        force_rebuild = os.getenv("FORCE_REBUILD", "").lower() in ("1", "true", "yes")
+        if force_rebuild:
+            print("检测到 FORCE_REBUILD 环境变量，强制重新编译")
+        else:
+            # 检查是否已存在编译好的库文件
+            print("检查已存在的库文件...")
+            library_exists, library_path = check_existing_library()
+            
+            if library_exists:
+                print(f"找到库文件: {library_path}")
+                # 检查库文件是否是最新的
+                if is_library_up_to_date(library_path, []):
+                    print("使用已存在的库文件，跳过编译")
+                    # 确保库文件在正确的位置
+                    dst_dir = os.path.join("python", "processor_decorator")
+                    os.makedirs(dst_dir, exist_ok=True)
+                    dst_lib = os.path.join(dst_dir, os.path.basename(library_path))
+                    
+                    if not os.path.exists(dst_lib) or os.path.getmtime(library_path) > os.path.getmtime(dst_lib):
+                        shutil.copy2(library_path, dst_lib)
+                        print(f"复制库文件: {library_path} -> {dst_lib}")
+                    else:
+                        print(f"目标库文件已是最新: {dst_lib}")
+                    return
+                else:
+                    print("库文件已过时，需要重新编译")
+            else:
+                print("未找到已存在的库文件，需要重新编译")
+        
+        print("开始编译库文件...")
+        
+        # 确定构建类型 (Release/Debug)
+        build_type = "Release"  # 默认用 Release，如需 Debug 可通过环境变量切换
+        if os.getenv("CMAKE_BUILD_TYPE"):
+            build_type = os.getenv("CMAKE_BUILD_TYPE")
+        
+        # 使用系统特定的编译目录
+        build_dir_name = get_system_build_dir()
+        build_dir = os.path.abspath(build_dir_name)
+        os.makedirs(build_dir, exist_ok=True)
+        print(f"使用编译目录: {build_dir}")
+        
+        # 生成构建系统
+        subprocess.check_call([
+            "cmake", 
+            "..",
+            f"-DCMAKE_BUILD_TYPE={build_type}"
+        ], cwd=build_dir)
+        
+        # 编译项目
+        subprocess.check_call([
+            "cmake", 
+            "--build", ".", 
+            "--config", build_type
+        ], cwd=build_dir)
+
+        # Windows 专用处理
+        ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or ".pyd"
+        pyd_name = f"shared_ring_queue{ext_suffix}"
+        
+        # 处理 Windows 的构建目录结构 (Debug/Release)
+        print("---------------------", platform.system() == "Windows", platform.system())
+        build_subdir = build_type if platform.system() == "Windows" else ""
+        print("--------------build_subdir------",build_subdir)
+        src_pyd = os.path.join(build_dir, build_subdir, pyd_name)
+        # print("-----------src_pyd-----------",)
+        # 检查文件是否存在
+        if not os.path.exists(src_pyd):
+            # 尝试其他可能路径
+            src_pyd = os.path.join(build_dir, "python", "processor_decorator",build_subdir, pyd_name)
+            if not os.path.exists(src_pyd):
+                raise FileNotFoundError(f"Cannot find compiled .pyd: {src_pyd}")
+
+        # 目标路径
+        dst_dir = os.path.join("python", "processor_decorator")
+        os.makedirs(dst_dir, exist_ok=True)
+        dst_pyd = os.path.join(dst_dir, pyd_name)
+        
+        # 复制文件
+        shutil.copy2(src_pyd, dst_pyd)
+        print(f"Copied {src_pyd} -> {dst_pyd}")
+
+class Build(build_orig):
+    def run(self):
+        print("=" * 50)
+        print("Build.run() 被调用")
+        print("=" * 50)
+        self.run_command("build_ext")
+        super().run()
+
+class BdistWheel(bdist_wheel):
+    def run(self):
+        print("=" * 50)
+        print("BdistWheel.run() 被调用")
+        print("=" * 50)
+        self.run_command("build_ext")
+        super().run()
+
+setup(
+    name="processor-decorator",
+    version="0.1",
+    packages=find_packages(where="python"),
+    package_dir={"": "python"},
+    package_data={
+        "processor_decorator": [
+            "*.pyd",  # Windows 扩展名
+            "*.dll",  # 可能的依赖项
+            "*.py"
+        ]
+    } if platform.system() == "Windows" else {"processor_decorator": ["*.so", "*.py"]},
+    include_package_data=True,
+    zip_safe=False,
+    cmdclass={
+        "build_ext": CMakeBuild,
+        "build": Build,
+        "bdist_wheel": BdistWheel,
+    },
+)

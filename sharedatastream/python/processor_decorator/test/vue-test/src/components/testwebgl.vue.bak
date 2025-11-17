@@ -1,0 +1,25 @@
+﻿<template>
+    <canvas ref="canvasRef" width="800" height="400" />
+  </template>
+  
+  <script setup>
+  import { ref, onMounted } from 'vue';
+  import { WebGLPlot, WebglLine } from 'webgl-plot';
+  
+  const canvasRef = ref(null);
+  
+  onMounted(() => {
+    const canvas = canvasRef.value;
+    const wglp = new WebGLPlot(canvas);
+    const line = new WebglLine('red', 1000);
+  
+    for (let i = 0; i < line.length; i++) {
+      const x = (i / line.length) * 2 - 1;
+      line.setX(i, x);
+      line.setY(i, Math.sin(10 * x));
+    }
+  
+    wglp.addLine(line);
+    wglp.update();
+  });
+  </script>

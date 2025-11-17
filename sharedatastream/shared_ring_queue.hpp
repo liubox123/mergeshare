@@ -1,0 +1,148 @@
+﻿#pragma once
+#include <boost/interprocess/shared_memory_object.hpp>
+#include <boost/interprocess/mapped_region.hpp>
+#include <boost/interprocess/sync/interprocess_mutex.hpp>
+#include <boost/interprocess/sync/interprocess_condition.hpp>
+#include <boost/interprocess/permissions.hpp>
+#include <boost/interprocess/sync/scoped_lock.hpp>
+#ifdef _WIN32
+#include <boost/interprocess/windows_shared_memory.hpp>
+#endif
+#include <atomic>
+#include <cstring>
+#include <string>
+#include <stdexcept>
+#include <vector>
+#include <memory>
+#include <queue>
+#include <thread>
+#include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <pybind11/functional.h>
+
+using namespace boost::interprocess;
+
+constexpr size_t METADATA_SIZE = 256;
+constexpr size_t MAX_CONSUMER = 32;
+
+struct alignas(8) Node {
+    interprocess_mutex node_mutex;
+    uint32_t next_offset;
+    uint32_t data_size;
+    char data[]; // 实际分配时扩展
+};
+
+struct alignas(8) RingQueueHeader {
+    interprocess_mutex global_mutex;
+    interprocess_condition cond_not_empty;
+    interprocess_condition cond_not_full;
+    std::atomic<uint32_t> head_offset;
+    std::atomic<uint32_t> tail_offset;
+    uint32_t node_count;
+    uint32_t node_size;
+    uint32_t total_refs;
+    uint32_t consumer_count;
+    size_t shm_size;
+    char metadata[METADATA_SIZE];
+    std::atomic<uint32_t> consumer_heads[MAX_CONSUMER];
+    std::atomic<uint32_t> next_consumer_id;
+    std::atomic<uint8_t> consumer_active[MAX_CONSUMER];
+    std::atomic<uint64_t> producer_pid;
+};
+
+class SharedRingQueueRaw {
+public:
+    SharedRingQueueRaw(void* shm_base, size_t shm_size, bool owner,
+                       uint32_t node_count, uint32_t node_size, uint32_t total_refs, const std::string& metadata);
+    uint32_t offset_of(uint32_t idx) const;
+    Node* node_at(uint32_t idx) const;
+    Node* node_at_offset(uint32_t offset) const;
+    uint32_t index_of(uint32_t offset) const;
+    RingQueueHeader* header() const;
+    uint32_t node_count() const;
+    uint32_t node_size() const;
+    size_t shm_size() const;
+    std::string metadata() const;
+    // 允许外部直接访问成员（如有需要可加friend）
+    uint8_t* base_;
+    size_t shm_size_;
+    uint32_t node_count_;
+    uint32_t node_size_;
+    RingQueueHeader* header_;
+};
+
+class SharedRingQueueProducer {
+public:
+    SharedRingQueueProducer(const std::string& shm_name, uint32_t node_count, uint32_t data_block_size, uint32_t total_refs, const std::string& metadata);
+    ~SharedRingQueueProducer();
+    bool push(const void* data, uint32_t size);
+    std::string metadata() const;
+    uint32_t node_count() const;
+    uint32_t node_size() const;
+    size_t shm_size() const;
+private:
+    std::string shm_name_;
+#ifdef _WIN32
+    std::unique_ptr<windows_shared_memory> shm_obj_;
+#else
+    std::unique_ptr<shared_memory_object> shm_obj_;
+#endif
+    std::unique_ptr<mapped_region> region_;
+    std::unique_ptr<SharedRingQueueRaw> queue_;
+};
+
+class SharedRingQueueConsumer {
+public:
+    SharedRingQueueConsumer(const std::string& shm_name, uint32_t node_count, uint32_t data_block_size, int consumer_id = -1);
+    ~SharedRingQueueConsumer();
+    void unregister();
+    int pop(void* data_buf, uint32_t& out_size);
+    std::string metadata() const;
+    uint32_t node_count() const;
+    uint32_t node_size() const;
+    size_t shm_size() const;
+    uint32_t consumer_id() const;
+private:
+    std::string shm_name_;
+#ifdef _WIN32
+    std::unique_ptr<windows_shared_memory> shm_obj_;
+#else
+    std::unique_ptr<shared_memory_object> shm_obj_;
+#endif
+    std::unique_ptr<mapped_region> region_;
+    std::unique_ptr<SharedRingQueueRaw> queue_;
+    uint32_t consumer_id_ = 0;
+    bool registered_ = true;
+    uint32_t last_head_ = 0;
+};
+
+class SharedMemProcessor {
+public:
+    SharedMemProcessor(const std::string& in_shm, uint32_t in_queue_len, uint32_t in_block_size,
+                       const std::string& out_shm, uint32_t out_queue_len, uint32_t out_block_size,
+                       uint32_t total_refs, const std::string& metadata,
+                       size_t batch_size = 1, int timeout_ms = 10);
+    ~SharedMemProcessor();
+    void register_callback(pybind11::function cb);
+    void start();
+    void stop();
+    bool push_to_output(const pybind11::bytes& data);
+private:
+    void input_thread_func();
+    void callback_thread_func();
+    std::unique_ptr<SharedRingQueueConsumer> in_queue_;
+    std::unique_ptr<SharedRingQueueProducer> out_queue_;
+    std::queue<std::vector<char>> cache_;
+    std::mutex cache_mutex_;
+    std::condition_variable cache_cv_;
+    size_t batch_size_;
+    int timeout_ms_;
+    std::atomic<bool> running_;
+    std::thread input_thread_;
+    std::thread callback_thread_;
+    pybind11::function py_callback_;
+    std::mutex cb_mutex_;
+    bool has_input_ = false;
+    bool has_output_ = false;
+}; 

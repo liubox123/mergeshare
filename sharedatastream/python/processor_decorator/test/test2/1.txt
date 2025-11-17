@@ -1,0 +1,5 @@
+这些错误表明你的 ESLint 配置无法正确解析 Vue 单文件组件（.vue）和 ES Modules（import/export）。以下是逐步解决方案：
+
+​​1. 确保 ESLint 能解析 Vue 和现代 JavaScript​​
+安装必要依赖：
+npm install --save-dev eslint-plugin-vue @babel/eslint-parser @vue/eslint-config-standard eslint-plugin-import
