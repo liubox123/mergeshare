@@ -42,8 +42,16 @@ message(STATUS "=================================================")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # 查找依赖库
-find_package(Boost 1.70 REQUIRED COMPONENTS system)
 find_package(Threads REQUIRED)
+
+# Boost - 尝试多种方式查找
+find_package(Boost 1.70 QUIET COMPONENTS system)
+if(NOT Boost_FOUND)
+    # 如果找不到 system 组件，尝试只查找 Boost
+    find_package(Boost 1.70 REQUIRED)
+    message(STATUS "Boost found at: ${Boost_INCLUDE_DIRS}")
+    message(STATUS "Note: Boost.Interprocess is header-only, no linking required")
+endif()
 
 # 可选依赖
 if(ENABLE_TRACY)
