@@ -3,6 +3,8 @@ build/
 build-*/
 cmake-build-*/
 out/
+bin/
+lib/
 
 # CMake
 CMakeCache.txt
@@ -10,10 +12,15 @@ CMakeFiles/
 cmake_install.cmake
 CTestTestfile.cmake
 install_manifest.txt
+Makefile
+*.cmake
+!CMakeLists.txt
+!cmake/*.cmake
 
 # C/C++
 *.o
 *.so
+*.so.*
 *.dylib
 *.dll
 *.a
@@ -24,6 +31,41 @@ install_manifest.txt
 *.pdb
 *.ilk
 *.obj
+*.exp
+*.idb
+*.ipdb
+*.pch
+
+# 测试生成的文件
+test_output/
+test_data/
+*.test
+*.testlog
+
+# 性能测试结果
+perf_results/
+*.perf
+benchmark_results/
+
+# Tracy Profiler
+*.tracy
+tracy_*.json
+
+# 共享内存段（测试残留）
+/dev/shm/*
+*.shm
+
+# Logs
+*.log
+logs/
+multiqueue*.log
+
+# 临时文件
+*.tmp
+*.temp
+tmp/
+temp/
+.cache/
 
 # Python
 __pycache__/
@@ -43,6 +85,12 @@ pip-delete-this-directory.txt
 .pytest_cache/
 .coverage
 htmlcov/
+.tox/
+.hypothesis/
+*.cover
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
 # IDE
 .vscode/
@@ -52,28 +100,71 @@ htmlcov/
 *~
 .DS_Store
 *.bak
+.clangd/
+compile_commands.json
 
-# Tracy
-*.tracy
-
-# Logs
-*.log
-logs/
-
-# Temporary files
-*.tmp
-*.temp
-tmp/
-temp/
-
-# Documentation generated
+# 文档生成
 docs/_build/
 docs/.doctrees/
+docs/_static/
+docs/_templates/
+site/
+.doxygen/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*.ipynb
 
 # Package managers
 .conan/
 vcpkg_installed/
+node_modules/
+
+# Core dumps
+core
+core.*
+vgcore.*
+
+# Valgrind
+*.memcheck
+*.callgrind
+*.cachegrind
+
+# GDB
+.gdb_history
+
+# 操作系统
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rm/
+[Aa]rm64/
+bld/
+[Bb]in/
+[Oo]bj/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+
+# Linux
+*~
+.directory
+
+# 项目特定
+examples/cpp/build/
+examples/python/*.pyc
+tests/cpp/build/
+tests/python/.pytest_cache/
 
