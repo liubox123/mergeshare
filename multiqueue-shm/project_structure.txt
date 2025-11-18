@@ -1,0 +1,35 @@
+.
+|-- CMakeLists.txt
+|-- CONTRIBUTING.md
+|-- LICENSE
+|-- PROJECT_INITIALIZATION_SUMMARY.md
+|-- README.md
+|-- cmake
+|-- commit
+|   `-- 2025-11-18_project_init.md
+|-- core
+|   |-- CMakeLists.txt
+|   `-- README.md
+|-- docs
+|   |-- api_reference.md
+|   |-- architecture.md
+|   |-- development_plan.md
+|   |-- getting_started.md
+|   `-- task_breakdown.md
+|-- examples
+|   |-- cpp
+|   |   `-- README.md
+|   `-- python
+|       `-- README.md
+|-- logger
+|   |-- CMakeLists.txt
+|   `-- README.md
+|-- project_structure.txt
+|-- python-binding
+|-- tests
+|   |-- cpp
+|   |-- integration
+|   `-- python
+`-- tracy-integration
+
+15 directories, 18 files
