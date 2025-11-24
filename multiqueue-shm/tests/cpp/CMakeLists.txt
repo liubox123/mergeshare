@@ -1,21 +1,48 @@
-# C++ Tests CMakeLists.txt
+# C++ 测试
 
-# 编译测试（验证接口定义）
-add_executable(test_compile test_compile.cpp)
-target_link_libraries(test_compile
-    multiqueue_core
-    Threads::Threads
+# 启用测试
+enable_testing()
+
+# 查找 Google Test
+find_package(GTest REQUIRED)
+
+# 测试可执行文件列表
+set(TEST_SOURCES
+    test_types.cpp
+    test_timestamp.cpp
+    test_buffer_metadata.cpp
+    test_buffer_pool.cpp
+    test_buffer_allocator.cpp
+    test_port_queue.cpp
+    test_block.cpp
+    test_multiprocess.cpp
 )
 
-# Boost 链接（如果需要）
-if(TARGET Boost::boost)
-    target_link_libraries(test_compile Boost::boost)
-elseif(TARGET Boost::system)
-    target_link_libraries(test_compile Boost::system)
-endif()
+# 为每个测试源文件创建可执行文件
+foreach(TEST_SOURCE ${TEST_SOURCES})
+    # 获取测试名称（去掉 .cpp 扩展名）
+    get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
+    
+    # 创建可执行文件
+    add_executable(${TEST_NAME} ${TEST_SOURCE})
+    
+    # 链接库
+    target_link_libraries(${TEST_NAME}
+        multiqueue_core
+        GTest::GTest
+        GTest::Main
+        ${CMAKE_THREAD_LIBS_INIT}
+    )
+    
+    # 设置 C++ 标准
+    set_target_properties(${TEST_NAME} PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+    )
+    
+    # 添加到测试列表
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endforeach()
 
-# 添加编译测试到 CTest
-add_test(NAME CompileTest COMMAND test_compile)
-
-message(STATUS "C++ tests configured")
-
+# 设置测试超时
+set_tests_properties(test_multiprocess PROPERTIES TIMEOUT 30)

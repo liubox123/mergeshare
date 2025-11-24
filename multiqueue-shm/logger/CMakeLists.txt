@@ -22,3 +22,4 @@ target_compile_features(mp_logger INTERFACE cxx_std_17)
 
 message(STATUS "Logger component configured (header-only)")
 
+

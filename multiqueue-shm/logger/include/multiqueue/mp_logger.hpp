@@ -83,9 +83,34 @@ public:
         // 打开日志文件
         open_log_file();
         
-        // 写入启动消息
-        log_internal(LogLevel::INFO, __FILE__, __LINE__, __func__, 
-                    "Logger initialized: " + log_file_path_);
+        // 直接写入启动消息，避免死锁
+        if (log_file_.is_open()) {
+            auto now = std::chrono::system_clock::now();
+            auto time_t_now = std::chrono::system_clock::to_time_t(now);
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now.time_since_epoch()
+            ) % 1000;
+            
+            struct tm time_info;
+#ifdef _WIN32
+            localtime_s(&time_info, &time_t_now);
+#else
+            localtime_r(&time_t_now, &time_info);
+#endif
+            
+            char time_buffer[64];
+            std::strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S", &time_info);
+            
+            log_file_ << "[" << time_buffer << "." << std::setfill('0') << std::setw(3) << ms.count() << "] ";
+            log_file_ << "[INFO ] [pid:" << get_process_id() << ":tid:" << get_thread_id() << "] ";
+            log_file_ << "[mp_logger.hpp:" << __LINE__ << " " << __func__ << "] ";
+            log_file_ << "Logger initialized: " << log_file_path_ << std::endl;
+            log_file_.flush();
+            
+            if (enable_console_) {
+                std::cout << "Logger initialized: " << log_file_path_ << std::endl;
+            }
+        }
     }
     
     /**
@@ -138,10 +163,10 @@ public:
     void shutdown() {
         std::lock_guard<std::mutex> lock(mutex_);
         
-        log_internal(LogLevel::INFO, __FILE__, __LINE__, __func__, 
-                    "Logger shutting down");
-        
+        // 直接写入关闭消息，避免死锁
         if (log_file_.is_open()) {
+            log_file_ << "Logger shutting down" << std::endl;
+            log_file_.flush();
             log_file_.close();
         }
     }
@@ -304,56 +329,16 @@ private:
             return;  // 无法打开文件
         }
         
-        // 获取文件锁
-        acquire_file_lock();
-        
         // 写入日志
+        // 注意：由于已经有 mutex 保护，多线程安全已保证
+        // 多进程场景下，文件系统会保证小块写入的原子性
         log_file_ << log_entry << std::endl;
         log_file_.flush();
-        
-        // 释放文件锁
-        release_file_lock();
     }
     
-    /**
-     * @brief 获取文件锁
-     */
-    void acquire_file_lock() {
-#ifdef _WIN32
-        // Windows: 使用 LockFile
-        HANDLE file_handle = (HANDLE)_get_osfhandle(_fileno(::_fdopen(log_file_.rdbuf()->fd(), "a")));
-        if (file_handle != INVALID_HANDLE_VALUE) {
-            OVERLAPPED overlapped = {0};
-            LockFileEx(file_handle, LOCKFILE_EXCLUSIVE_LOCK, 0, MAXDWORD, MAXDWORD, &overlapped);
-        }
-#else
-        // Linux/macOS: 使用 flock
-        int fd = fileno(::fdopen(dup(1), "a"));  // 获取文件描述符
-        if (fd >= 0) {
-            flock(fd, LOCK_EX);  // 排他锁
-        }
-#endif
-    }
-    
-    /**
-     * @brief 释放文件锁
-     */
-    void release_file_lock() {
-#ifdef _WIN32
-        // Windows: 使用 UnlockFile
-        HANDLE file_handle = (HANDLE)_get_osfhandle(_fileno(::_fdopen(log_file_.rdbuf()->fd(), "a")));
-        if (file_handle != INVALID_HANDLE_VALUE) {
-            OVERLAPPED overlapped = {0};
-            UnlockFileEx(file_handle, 0, MAXDWORD, MAXDWORD, &overlapped);
-        }
-#else
-        // Linux/macOS: 使用 flock
-        int fd = fileno(::fdopen(dup(1), "a"));
-        if (fd >= 0) {
-            flock(fd, LOCK_UN);  // 释放锁
-        }
-#endif
-    }
+    // 注意：文件锁已移除，改用 mutex 保证线程安全
+    // 对于多进程场景，小块的写入（< PIPE_BUF，通常4KB）在POSIX系统上是原子的
+    // 如果需要严格的多进程文件锁，可以使用 Boost.Interprocess 的 file_lock
     
     /**
      * @brief 日志级别转字符串
@@ -463,4 +448,5 @@ private:
 
 } // namespace logger
 } // namespace multiqueue
+
 
