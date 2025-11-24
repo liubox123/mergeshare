@@ -224,6 +224,4 @@ if (queue.pop(buffer_id)) {
 
 ## 参考文档
 
-- [设计文档](../design/)
-- [API 参考](../docs/api_reference.md)
-- [多进程 Buffer 管理设计](../design/MULTIPROCESS_BUFFER_MANAGEMENT.md)
+

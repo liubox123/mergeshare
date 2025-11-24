@@ -31,31 +31,9 @@ endif()
 
 message(STATUS "pybind11 found: ${pybind11_VERSION}")
 
-# 创建 Python 扩展模块
-pybind11_add_module(multiqueue_shm src/multiqueue_python.cpp)
+# TODO: 阶段4 - 实现 Python 绑定
+# 这里将添加 pybind11_add_module 来构建 Python 扩展模块
 
-# 链接核心库
-target_link_libraries(multiqueue_shm PRIVATE
-    multiqueue_core
-    Threads::Threads
-)
-
-# 添加 Boost 链接
-if(TARGET Boost::boost)
-    target_link_libraries(multiqueue_shm PRIVATE Boost::boost)
-endif()
-
-# 设置输出目录
-set_target_properties(multiqueue_shm PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python
-)
-
-# 安装 Python 模块
-install(TARGETS multiqueue_shm
-    LIBRARY DESTINATION ${Python3_SITEARCH}
-)
-
-message(STATUS "Python binding configured successfully")
-message(STATUS "  Module: multiqueue_shm")
-message(STATUS "  Output: ${CMAKE_BINARY_DIR}/python")
+message(STATUS "Python binding configuration completed (implementation pending)")
+message(STATUS "  Python binding will be implemented in Phase 4")
 
