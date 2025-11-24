@@ -121,7 +121,7 @@ vcpkg_installed/
 node_modules/
 
 # Core dumps
-core
+
 core.*
 vgcore.*
 
