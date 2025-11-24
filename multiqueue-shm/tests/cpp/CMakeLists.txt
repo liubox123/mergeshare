@@ -16,6 +16,7 @@ set(TEST_SOURCES
     test_port_queue.cpp
     test_block.cpp
     test_multiprocess.cpp
+    test_multiprocess_advanced.cpp
 )
 
 # Google Test 单元测试（如果可用）
@@ -102,3 +103,4 @@ message(STATUS "C++ tests configured")
 
 # 设置测试超时
 set_tests_properties(test_multiprocess PROPERTIES TIMEOUT 30)
+set_tests_properties(test_multiprocess_advanced PROPERTIES TIMEOUT 60)
