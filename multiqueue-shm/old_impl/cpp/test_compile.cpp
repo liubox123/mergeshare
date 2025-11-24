@@ -58,7 +58,7 @@ int main() {
         
         std::cout << "✓ ControlBlock: OK" << std::endl;
         std::cout << "  - Write offset: " << control.write_offset.load() << std::endl;
-        std::cout << "  - Read offset: " << control.read_offset.load() << std::endl;
+        std::cout << "  - Active consumers: " << control.consumers.active_count.load() << std::endl;
     }
     
     // 4. 测试元素头部

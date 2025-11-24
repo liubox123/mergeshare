@@ -1,22 +1,21 @@
-# C++ 测试
+# C++ Tests CMakeLists.txt
 
-# 启用测试
-enable_testing()
-
-# 查找 Google Test
-find_package(GTest REQUIRED)
-
-# 测试可执行文件列表
-set(TEST_SOURCES
-    test_types.cpp
-    test_timestamp.cpp
-    test_buffer_metadata.cpp
-    test_buffer_pool.cpp
-    test_buffer_allocator.cpp
-    test_port_queue.cpp
-    test_block.cpp
-    test_multiprocess.cpp
+# 编译测试（验证接口定义）
+add_executable(test_compile test_compile.cpp)
+target_link_libraries(test_compile
+    multiqueue_core
+    Threads::Threads
 )
+
+# Boost 链接（如果需要）
+if(TARGET Boost::boost)
+    target_link_libraries(test_compile Boost::boost)
+elseif(TARGET Boost::system)
+    target_link_libraries(test_compile Boost::system)
+endif()
+
+# 添加编译测试到 CTest
+add_test(NAME CompileTest COMMAND test_compile)
 
 # Google Test 单元测试（如果可用）
 include(${CMAKE_SOURCE_DIR}/cmake/FindGoogleTest.cmake)
@@ -100,5 +99,3 @@ endif()
 
 message(STATUS "C++ tests configured")
 
-# 设置测试超时
-set_tests_properties(test_multiprocess PROPERTIES TIMEOUT 30)
