@@ -389,6 +389,7 @@ struct BufferPoolRegistry {
                 
                 if (shm_name) {
                     strncpy(pools[i].shm_name, shm_name, sizeof(pools[i].shm_name) - 1);
+                    pools[i].shm_name[sizeof(pools[i].shm_name) - 1] = '\0';  // 确保 null terminator
                 }
                 
                 pool_count.fetch_add(1, std::memory_order_relaxed);

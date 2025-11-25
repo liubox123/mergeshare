@@ -6,18 +6,56 @@ enable_testing()
 # 查找 Google Test
 find_package(GTest REQUIRED)
 
-# 测试可执行文件列表
-set(TEST_SOURCES
-    test_types.cpp
-    test_timestamp.cpp
-    test_buffer_metadata.cpp
-    test_buffer_pool.cpp
-    test_buffer_allocator.cpp
-    test_port_queue.cpp
-    test_block.cpp
-    test_multiprocess.cpp
-    test_multiprocess_advanced.cpp
+# Phase 1 & Phase 2 测试（新架构）
+set(NEW_ARCH_TESTS
+    test_types
+    test_timestamp
+    test_buffer_metadata
+    test_buffer_pool
+    test_buffer_allocator
+    test_port_queue
+    test_port_queue_multicast
+    test_multicast_simple
+    test_multicast_simple2
+    test_debug_alloc
+    test_block
+    test_shm_manager
+    test_runtime_simple
+    test_integration
+    test_integration_complete
+    test_multiprocess
+    test_multiprocess_advanced
+    test_multiprocess_integration
+    test_multiprocess_multicast
+    test_continuous_stream
+    test_timestamp_sync_streams
+    test_integration_complete_streams
 )
+
+# 为每个测试创建可执行文件
+foreach(TEST_NAME ${NEW_ARCH_TESTS})
+    add_executable(${TEST_NAME} ${TEST_NAME}.cpp)
+    target_link_libraries(${TEST_NAME}
+        multiqueue_core
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+    )
+    if(TARGET Boost::boost)
+        target_link_libraries(${TEST_NAME} Boost::boost)
+    endif()
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endforeach()
+
+# 设置测试超时
+set_tests_properties(test_shm_manager PROPERTIES TIMEOUT 30)
+set_tests_properties(test_integration PROPERTIES TIMEOUT 60)
+set_tests_properties(test_integration_complete PROPERTIES TIMEOUT 90)
+set_tests_properties(test_multiprocess PROPERTIES TIMEOUT 30)
+set_tests_properties(test_multiprocess_advanced PROPERTIES TIMEOUT 60)
+set_tests_properties(test_multiprocess_integration PROPERTIES TIMEOUT 120)
+
+# ===== 旧架构测试（兼容）=====
 
 # Google Test 单元测试（如果可用）
 include(${CMAKE_SOURCE_DIR}/cmake/FindGoogleTest.cmake)
@@ -26,71 +64,82 @@ if(GOOGLETEST_FOUND)
     message(STATUS "Google Test found, building unit tests")
     
     # 元数据测试
-    add_executable(test_metadata test_metadata.cpp)
-    target_link_libraries(test_metadata
-        multiqueue_core
-        GTest::gtest
-        GTest::gtest_main
-        Threads::Threads
-    )
-    add_test(NAME MetadataTest COMMAND test_metadata)
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test_metadata.cpp)
+        add_executable(test_metadata_old test_metadata.cpp)
+        target_link_libraries(test_metadata_old
+            multiqueue_core
+            GTest::gtest
+            GTest::gtest_main
+            Threads::Threads
+        )
+        add_test(NAME MetadataTest COMMAND test_metadata_old)
+    endif()
     
     # 配置测试
-    add_executable(test_config test_config.cpp)
-    target_link_libraries(test_config
-        multiqueue_core
-        GTest::gtest
-        GTest::gtest_main
-        Threads::Threads
-    )
-    add_test(NAME ConfigTest COMMAND test_config)
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test_config.cpp)
+        add_executable(test_config_old test_config.cpp)
+        target_link_libraries(test_config_old
+            multiqueue_core
+            GTest::gtest
+            GTest::gtest_main
+            Threads::Threads
+        )
+        add_test(NAME ConfigTest COMMAND test_config_old)
+    endif()
     
     # 日志测试
-    add_executable(test_logger test_logger.cpp)
-    target_link_libraries(test_logger
-        multiqueue_core
-        GTest::gtest
-        GTest::gtest_main
-        Threads::Threads
-    )
-    add_test(NAME LoggerTest COMMAND test_logger)
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test_logger.cpp)
+        add_executable(test_logger_old test_logger.cpp)
+        target_link_libraries(test_logger_old
+            multiqueue_core
+            GTest::gtest
+            GTest::gtest_main
+            Threads::Threads
+        )
+        add_test(NAME LoggerTest COMMAND test_logger_old)
+    endif()
     
     # 压力测试
-    add_executable(test_stress test_stress.cpp)
-    target_link_libraries(test_stress
-        multiqueue_core
-        GTest::gtest
-        GTest::gtest_main
-        Threads::Threads
-    )
-    add_test(NAME StressTest COMMAND test_stress)
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test_stress.cpp)
+        add_executable(test_stress_old test_stress.cpp)
+        target_link_libraries(test_stress_old
+            multiqueue_core
+            GTest::gtest
+            GTest::gtest_main
+            Threads::Threads
+        )
+        add_test(NAME StressTest COMMAND test_stress_old)
+    endif()
     
     # RingQueue 测试
-    add_executable(test_ringqueue test_ringqueue.cpp)
-    target_link_libraries(test_ringqueue
-        multiqueue_core
-        GTest::gtest
-        GTest::gtest_main
-        Threads::Threads
-    )
-    # 添加 Boost 链接
-    if(TARGET Boost::boost)
-        target_link_libraries(test_ringqueue Boost::boost)
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test_ringqueue.cpp)
+        add_executable(test_ringqueue_old test_ringqueue.cpp)
+        target_link_libraries(test_ringqueue_old
+            multiqueue_core
+            GTest::gtest
+            GTest::gtest_main
+            Threads::Threads
+        )
+        if(TARGET Boost::boost)
+            target_link_libraries(test_ringqueue_old Boost::boost)
+        endif()
+        add_test(NAME RingQueueTest COMMAND test_ringqueue_old)
     endif()
-    add_test(NAME RingQueueTest COMMAND test_ringqueue)
     
     # 时间戳同步测试
-    add_executable(test_timestamp_sync test_timestamp_sync.cpp)
-    target_link_libraries(test_timestamp_sync
-        multiqueue_core
-        GTest::gtest
-        GTest::gtest_main
-        Threads::Threads
-    )
-    if(TARGET Boost::boost)
-        target_link_libraries(test_timestamp_sync Boost::boost)
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test_timestamp_sync.cpp)
+        add_executable(test_timestamp_sync_old test_timestamp_sync.cpp)
+        target_link_libraries(test_timestamp_sync_old
+            multiqueue_core
+            GTest::gtest
+            GTest::gtest_main
+            Threads::Threads
+        )
+        if(TARGET Boost::boost)
+            target_link_libraries(test_timestamp_sync_old Boost::boost)
+        endif()
+        add_test(NAME TimestampSyncTest COMMAND test_timestamp_sync_old)
     endif()
-    add_test(NAME TimestampSyncTest COMMAND test_timestamp_sync)
     
     message(STATUS "Google Test unit tests configured")
 else()
@@ -100,7 +149,3 @@ else()
 endif()
 
 message(STATUS "C++ tests configured")
-
-# 设置测试超时
-set_tests_properties(test_multiprocess PROPERTIES TIMEOUT 30)
-set_tests_properties(test_multiprocess_advanced PROPERTIES TIMEOUT 60)

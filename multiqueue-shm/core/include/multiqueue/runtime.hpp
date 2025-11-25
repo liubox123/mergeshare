@@ -352,6 +352,11 @@ public:
     ProcessId process_id() const { return process_id_; }
     
     /**
+     * @brief 获取全局注册表
+     */
+    GlobalRegistry* registry() { return registry_; }
+    
+    /**
      * @brief 获取 Buffer 分配器
      */
     SharedBufferAllocator* allocator() { return allocator_.get(); }
@@ -374,7 +379,94 @@ public:
         return (it != blocks_.end()) ? it->second.get() : nullptr;
     }
     
+    /**
+     * @brief 创建 Block（模板方法）
+     * 
+     * @tparam BlockType Block 类型
+     * @tparam Args 构造参数类型
+     * @param args 传递给 Block 构造函数的参数
+     * @return BlockType* Block 指针，失败返回 nullptr
+     * 
+     * @note 自动分配 BlockId 并注册到 Scheduler
+     */
+    template<typename BlockType, typename... Args>
+    BlockType* create_block(Args&&... args) {
+        if (!initialized_) {
+            return nullptr;
+        }
+        
+        // 分配 BlockId
+        BlockId block_id = allocate_block_id();
+        if (block_id == INVALID_BLOCK_ID) {
+            return nullptr;
+        }
+        
+        // 创建 Block 实例
+        try {
+            auto block = std::make_unique<BlockType>(std::forward<Args>(args)...);
+            
+            // 设置 Block ID（如果 Block 支持）
+            block->set_id(block_id);
+            
+            BlockType* block_ptr = block.get();
+            
+            // 添加到 blocks_ 映射
+            blocks_[block_id] = std::move(block);
+            
+            // 注册到 Scheduler
+            if (scheduler_) {
+                scheduler_->register_block(block_ptr);
+            }
+            
+            return block_ptr;
+            
+        } catch (const std::exception& e) {
+            // 创建失败，回收 BlockId
+            free_block_id(block_id);
+            return nullptr;
+        }
+    }
+    
+    /**
+     * @brief 移除 Block
+     * 
+     * @param block_id Block ID
+     */
+    void remove_block(BlockId block_id) {
+        auto it = blocks_.find(block_id);
+        if (it == blocks_.end()) {
+            return;
+        }
+        
+        // 从 Scheduler 注销
+        if (scheduler_) {
+            scheduler_->unregister_block(block_id);
+        }
+        
+        // 移除 Block
+        blocks_.erase(it);
+        
+        // 回收 BlockId
+        free_block_id(block_id);
+    }
+    
 private:
+    /**
+     * @brief 分配 BlockId
+     */
+    BlockId allocate_block_id() {
+        static std::atomic<BlockId> next_block_id{1};
+        return next_block_id.fetch_add(1, std::memory_order_relaxed);
+    }
+    
+    /**
+     * @brief 回收 BlockId（预留接口）
+     */
+    void free_block_id(BlockId /*block_id*/) {
+        // 当前简单实现不回收 ID
+        // 未来可以实现 ID 池复用
+    }
+    
     /**
      * @brief 初始化全局注册表
      */

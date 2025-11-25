@@ -2,7 +2,7 @@
  * @file port.hpp
  * @brief Block 端口定义
  * 
- * 定义 Block 的输入和输出端口
+ * 定义 Block 的输入和输出端口，支持广播模式
  */
 
 #pragma once
@@ -87,14 +87,6 @@ public:
     bool is_connected() const { return connected_; }
     
     /**
-     * @brief 设置端口队列
-     */
-    void set_queue(PortQueue* queue) {
-        queue_ = queue;
-        connected_ = (queue != nullptr);
-    }
-    
-    /**
      * @brief 获取端口队列
      */
     PortQueue* queue() { return queue_; }
@@ -108,34 +100,80 @@ protected:
 };
 
 /**
- * @brief 输入端口
+ * @brief 输入端口（支持广播模式）
  */
 class InputPort : public Port {
 public:
     InputPort(PortId id, const PortConfig& config)
         : Port(id, config)
+        , consumer_id_(INVALID_CONSUMER_ID)
     {
         config_.type = PortType::INPUT;
     }
     
     /**
-     * @brief 从端口读取 Buffer（阻塞）
+     * @brief 析构函数，自动注销消费者
+     */
+    ~InputPort() {
+        disconnect();
+    }
+    
+    /**
+     * @brief 设置端口队列并注册为消费者
+     */
+    void set_queue(PortQueue* queue) {
+        // 如果已经连接，先断开
+        if (connected_) {
+            disconnect();
+        }
+        
+        queue_ = queue;
+        
+        if (queue_) {
+            // 注册为消费者
+            consumer_id_ = queue_->register_consumer();
+            connected_ = (consumer_id_ != INVALID_CONSUMER_ID);
+        } else {
+            connected_ = false;
+            consumer_id_ = INVALID_CONSUMER_ID;
+        }
+    }
+    
+    /**
+     * @brief 断开连接并注销消费者
+     */
+    void disconnect() {
+        if (queue_ && consumer_id_ != INVALID_CONSUMER_ID) {
+            queue_->unregister_consumer(consumer_id_);
+            consumer_id_ = INVALID_CONSUMER_ID;
+        }
+        queue_ = nullptr;
+        connected_ = false;
+    }
+    
+    /**
+     * @brief 获取消费者 ID
+     */
+    ConsumerId consumer_id() const { return consumer_id_; }
+    
+    /**
+     * @brief 从端口读取 Buffer（非阻塞）
      * 
      * @param buffer 输出参数，Buffer 指针
      * @param allocator Buffer 分配器
      * @return true 成功，false 失败
      */
     bool read(BufferPtr& buffer, SharedBufferAllocator* allocator) {
-        if (!queue_ || !allocator) {
+        if (!queue_ || !allocator || consumer_id_ == INVALID_CONSUMER_ID) {
             return false;
         }
         
         BufferId buffer_id;
-        if (!queue_->pop(buffer_id)) {
+        if (!queue_->pop(consumer_id_, buffer_id)) {
             return false;
         }
         
-        // 创建 BufferPtr（会增加引用计数）
+        // 创建 BufferPtr（引用计数已在 pop 中处理）
         buffer = BufferPtr(buffer_id, allocator);
         return buffer.valid();
     }
@@ -150,16 +188,16 @@ public:
      */
     bool read_with_timeout(BufferPtr& buffer, SharedBufferAllocator* allocator, 
                            uint32_t timeout_ms) {
-        if (!queue_ || !allocator) {
+        if (!queue_ || !allocator || consumer_id_ == INVALID_CONSUMER_ID) {
             return false;
         }
         
         BufferId buffer_id;
-        if (!queue_->pop_with_timeout(buffer_id, timeout_ms)) {
+        if (!queue_->pop_with_timeout(consumer_id_, buffer_id, timeout_ms)) {
             return false;
         }
         
-        // 创建 BufferPtr（会增加引用计数）
+        // 创建 BufferPtr（引用计数已在 pop 中处理）
         buffer = BufferPtr(buffer_id, allocator);
         return buffer.valid();
     }
@@ -168,15 +206,24 @@ public:
      * @brief 检查是否有数据可读
      */
     bool has_data() const {
-        return queue_ && !queue_->empty();
+        if (!queue_ || consumer_id_ == INVALID_CONSUMER_ID) {
+            return false;
+        }
+        return !queue_->empty(consumer_id_);
     }
     
     /**
-     * @brief 获取队列中的数据数量
+     * @brief 获取队列中的数据数量（对于当前消费者）
      */
     size_t available() const {
-        return queue_ ? queue_->size() : 0;
+        if (!queue_ || consumer_id_ == INVALID_CONSUMER_ID) {
+            return 0;
+        }
+        return queue_->size(consumer_id_);
     }
+
+private:
+    ConsumerId consumer_id_;       ///< 消费者 ID（广播模式）
 };
 
 /**
@@ -191,6 +238,14 @@ public:
     }
     
     /**
+     * @brief 设置端口队列
+     */
+    void set_queue(PortQueue* queue) {
+        queue_ = queue;
+        connected_ = (queue != nullptr);
+    }
+    
+    /**
      * @brief 向端口写入 Buffer（阻塞）
      * 
      * @param buffer Buffer 指针
@@ -201,7 +256,7 @@ public:
             return false;
         }
         
-        // 只传递 Buffer ID
+        // 只传递 Buffer ID（引用计数在 push 中处理）
         return queue_->push(buffer.id());
     }
     
@@ -217,7 +272,7 @@ public:
             return false;
         }
         
-        // 只传递 Buffer ID
+        // 只传递 Buffer ID（引用计数在 push 中处理）
         return queue_->push_with_timeout(buffer.id(), timeout_ms);
     }
     
@@ -225,17 +280,16 @@ public:
      * @brief 检查是否可以写入
      */
     bool can_write() const {
-        return queue_ && !queue_->full();
+        // 在广播模式下，需要检查最慢的消费者是否还有空间
+        // 这个逻辑在 PortQueue::push 中处理
+        return queue_ && !queue_->is_closed();
     }
     
     /**
-     * @brief 获取队列中的空闲空间
+     * @brief 获取消费者数量
      */
-    size_t available_space() const {
-        if (!queue_) {
-            return 0;
-        }
-        return queue_->capacity() - queue_->size();
+    uint32_t consumer_count() const {
+        return queue_ ? queue_->get_consumer_count() : 0;
     }
 };
 

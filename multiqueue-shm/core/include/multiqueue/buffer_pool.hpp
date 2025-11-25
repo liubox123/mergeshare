@@ -318,6 +318,13 @@ public:
         return region_.get_address();
     }
     
+    /**
+     * @brief 获取头部指针（用于统计和调试）
+     */
+    const BufferPoolHeader* header() const {
+        return header_;
+    }
+    
 private:
     BufferPoolHeader* header_;     ///< 头部指针（进程本地）
     int32_t* free_list_;           ///< 空闲链表（进程本地）
